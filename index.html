@@ -52,16 +52,20 @@
     const hint = document.getElementById('hint');
     const scene = document.getElementById('ar-scene');
 
-    startBtn.addEventListener('click', () => {
+   startBtn.addEventListener('click', () => {
       startScreen.style.display = 'none';
       hint.style.display = 'block';
-      if (scene.hasLoaded) {
-        scene.components['mindar-image'].startAR();
-      } else {
-        scene.addEventListener('loaded', () => {
-          scene.components['mindar-image'].startAR();
-        });
-      }
+
+      // MindARコンポーネントが準備できるまで繰り返し確認する
+      const tryStart = () => {
+        const mindAR = scene.components['mindar-image'];
+        if (mindAR && mindAR.startAR) {
+          mindAR.startAR();
+        } else {
+          setTimeout(tryStart, 200);
+        }
+      };
+      tryStart();
     });
 
     scene.addEventListener('targetFound', () => {
