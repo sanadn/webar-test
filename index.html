@@ -8,9 +8,12 @@
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; font-family: sans-serif; }
-
-    /* MindARが作るvideo要素を強制的に全画面表示 */
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: transparent; /* ← 黒にすると透明部分が黒くなるのでtransparent */
+      font-family: sans-serif;
+    }
     video {
       position: fixed !important;
       top: 0 !important; left: 0 !important;
@@ -18,19 +21,18 @@
       object-fit: cover !important;
       z-index: 0 !important;
     }
-    /* A-FrameのcanvasをvideoよりZ軸で前面に */
     canvas {
       position: fixed !important;
       top: 0 !important; left: 0 !important;
       width: 100% !important; height: 100% !important;
       z-index: 1 !important;
     }
-
     #start-screen {
       position: fixed; inset: 0;
       display: flex; flex-direction: column;
       align-items: center; justify-content: center;
-      background: #111; color: #fff; z-index: 9999; gap: 20px;
+      background: #111; color: #fff;
+      z-index: 9999; gap: 20px;
     }
     #start-screen h1 { font-size: 1.4rem; text-align: center; line-height: 1.6; }
     #start-screen p { font-size: 0.9rem; color: #aaa; text-align: center; padding: 0 32px; }
@@ -56,7 +58,7 @@
     <h1>🎯 WebAR<br>SDキャラ体験</h1>
     <p>ボタンを押してカメラを起動し、<br>マーカー画像にかざしてください。</p>
     <button id="start-btn">タップしてARを開始</button>
-    <p style="color:#555; font-size:0.75rem; margin-top:8px;">v8</p>
+    <p style="color:#555; font-size:0.75rem; margin-top:8px;">v10</p>
   </div>
 
   <div id="hint">📷 マーカーを探しています…</div>
@@ -64,68 +66,79 @@
   <script>
     document.getElementById('start-btn').addEventListener('click', async () => {
       const hint = document.getElementById('hint');
+      const startScreen = document.getElementById('start-screen');
 
       // ① カメラ権限を取得
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-        stream.getTracks().forEach(t => t.stop());
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: false
+        });
+        stream.getTracks().forEach(track => track.stop());
       } catch(e) {
         alert('カメラエラー: ' + e.message);
         return;
       }
 
-      // ② MindARがvideo要素をDOMに追加した瞬間にplaysinlineを付与
-      //    setIntervalより速く検知できるMutationObserverを使用
+      // ② MindARが作るvideo要素にplaysinlineを即座に付与
       const observer = new MutationObserver((mutations) => {
         for (const mutation of mutations) {
           for (const node of mutation.addedNodes) {
             if (node.nodeName === 'VIDEO') {
               node.setAttribute('playsinline', '');
               node.setAttribute('webkit-playsinline', '');
+              node.setAttribute('muted', '');
               node.muted = true;
               node.play().catch(() => {});
-              observer.disconnect();
+              observer.disconnect(); // ← 見つけたら監視を止める
             }
           }
         }
       });
       observer.observe(document.body, { childList: true, subtree: true });
 
-      // ③ スタート画面を消す
-      document.getElementById('start-screen').style.display = 'none';
+      // ③ スタート画面を消してa-sceneを追加
+      startScreen.style.display = 'none';
       hint.style.display = 'block';
       hint.textContent = '⏳ AR起動中…';
 
-      // ④ a-sceneを追加
       document.body.insertAdjacentHTML('beforeend', `
         <a-scene
           mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiLoading: no; uiError: no; uiScanning: no;"
-          renderer="alpha: true; colorManagement: true"
+          renderer="alpha: true; colorManagement: true; antialias: true"
           vr-mode-ui="enabled: false"
-          device-orientation-permission-ui="enabled: false">
+          device-orientation-permission-ui="enabled: false"
+          embedded>
+          <a-assets>
+            <img id="chara" src="./chara.png">
+          </a-assets>
           <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-          <a-entity mindar-image-target="targetIndex: 0">
-            <a-image src="./chara.png" width="0.7" height="0.7" position="0 0.05 0"
-              transparent="true" alpha-test="0.1"
+          <a-entity id="target" mindar-image-target="targetIndex: 0">
+            <a-plane
+              width="0.7" height="0.7"
+              position="0 0.05 0"
+              material="src: #chara; shader: flat; transparent: true; alphaTest: 0.01; side: double; color: #fff"
               animation__float="property: position; from: 0 0.02 0; to: 0 0.10 0; dur: 1400; dir: alternate; loop: true; easing: easeInOutSine;"
               animation__wobble="property: rotation; from: 0 0 -4; to: 0 0 4; dur: 2200; dir: alternate; loop: true; easing: easeInOutQuad;">
-            </a-image>
+            </a-plane>
           </a-entity>
         </a-scene>`);
 
-      // ⑤ マーカー検出イベント登録
+      // ④ イベント登録
       const waitForScene = setInterval(() => {
         const scene = document.querySelector('a-scene');
-        if (!scene) return;
+        const target = document.getElementById('target');
+        if (!scene || !target) return;
         clearInterval(waitForScene);
+
         scene.addEventListener('arReady', () => {
           hint.textContent = '📷 マーカーを探しています…';
         });
-        scene.addEventListener('targetFound', () => {
+        target.addEventListener('targetFound', () => {
           hint.textContent = '🎉 キャラクター出現中！';
           hint.classList.add('found');
         });
-        scene.addEventListener('targetLost', () => {
+        target.addEventListener('targetLost', () => {
           hint.textContent = '📷 マーカーを探しています…';
           hint.classList.remove('found');
         });
