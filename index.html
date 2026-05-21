@@ -46,21 +46,32 @@
 
   </a-scene>
 
-  <script>
+ <script>
     const startScreen = document.getElementById('start-screen');
     const startBtn = document.getElementById('start-btn');
     const hint = document.getElementById('hint');
     const scene = document.getElementById('ar-scene');
 
-   startBtn.addEventListener('click', () => {
+    startBtn.addEventListener('click', async () => {
       startScreen.style.display = 'none';
       hint.style.display = 'block';
+      hint.textContent = '⏳ カメラ起動中…';
 
-      // MindARコンポーネントが準備できるまで繰り返し確認する
+      // まずカメラ権限を明示的に取得する（カメラテストと同じ方法）
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        stream.getTracks().forEach(t => t.stop()); // 取得したらすぐ止める
+      } catch(e) {
+        hint.textContent = '❌ カメラエラー: ' + e.message;
+        return;
+      }
+
+      // 権限取得後にMindARを起動
       const tryStart = () => {
         const mindAR = scene.components['mindar-image'];
         if (mindAR && mindAR.startAR) {
           mindAR.startAR();
+          hint.textContent = '📷 マーカーを探しています…';
         } else {
           setTimeout(tryStart, 200);
         }
