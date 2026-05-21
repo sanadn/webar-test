@@ -61,9 +61,8 @@
       hint.style.display = 'block';
       hint.textContent = '⏳ AR起動中…';
 
-      // ③ a-sceneをこのタイミングでDOMに追加
-      //    renderer="alpha: true" でcanvasを透明にする（これが今まで欠けていた設定）
-      const sceneHTML = `
+      // ③ a-sceneをボタン押下のタイミングでDOMに追加
+      document.body.insertAdjacentHTML('beforeend', `
         <a-scene
           mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiLoading: no; uiError: no; uiScanning: no;"
           renderer="alpha: true; colorManagement: true"
@@ -77,15 +76,29 @@
               animation__wobble="property: rotation; from: 0 0 -4; to: 0 0 4; dur: 2200; dir: alternate; loop: true; easing: easeInOutQuad;">
             </a-image>
           </a-entity>
-        </a-scene>`;
-      document.body.insertAdjacentHTML('beforeend', sceneHTML);
+        </a-scene>`);
 
-      // ④ マーカー検出イベントを登録
+      // ④ a-sceneが追加されたらイベント登録とvideo修正を行う
       const waitForScene = setInterval(() => {
         const scene = document.querySelector('a-scene');
         if (!scene) return;
         clearInterval(waitForScene);
 
+        // MindARが作るvideo要素にplaysinlineを付与（iOS Safari対応）
+        const fixVideo = setInterval(() => {
+          const video = document.querySelector('video');
+          if (video) {
+            clearInterval(fixVideo);
+            video.setAttribute('playsinline', '');
+            video.setAttribute('webkit-playsinline', '');
+            video.muted = true;
+            video.play().catch(() => {});
+          }
+        }, 100);
+
+        scene.addEventListener('arReady', () => {
+          hint.textContent = '📷 マーカーを探しています…';
+        });
         scene.addEventListener('targetFound', () => {
           hint.textContent = '🎉 キャラクター出現中！';
           hint.classList.add('found');
@@ -94,22 +107,8 @@
           hint.textContent = '📷 マーカーを探しています…';
           hint.classList.remove('found');
         });
-        scene.addEventListener('arReady', () => {
-          hint.textContent = '📷 マーカーを探しています…';
-        });
       }, 100);
     });
-    // MindARが作るvideo要素にplaysinlineを強制付与
-      const fixVideo = setInterval(() => {
-        const video = document.querySelector('video');
-        if (video) {
-          clearInterval(fixVideo);
-          video.setAttribute('playsinline', '');
-          video.setAttribute('webkit-playsinline', '');
-          video.muted = true;
-          video.play().catch(() => {});
-        }
-      }, 100);
   </script>
 
 </body>
