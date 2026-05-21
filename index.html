@@ -9,6 +9,23 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: sans-serif; }
+
+    /* MindARが作るvideo要素を強制的に全画面表示 */
+    video {
+      position: fixed !important;
+      top: 0 !important; left: 0 !important;
+      width: 100% !important; height: 100% !important;
+      object-fit: cover !important;
+      z-index: 0 !important;
+    }
+    /* A-FrameのcanvasをvideoよりZ軸で前面に */
+    canvas {
+      position: fixed !important;
+      top: 0 !important; left: 0 !important;
+      width: 100% !important; height: 100% !important;
+      z-index: 1 !important;
+    }
+
     #start-screen {
       position: fixed; inset: 0;
       display: flex; flex-direction: column;
@@ -28,7 +45,7 @@
       background: rgba(0,0,0,0.6); color: #fff;
       font-size: 1rem; padding: 10px 24px;
       border-radius: 999px; pointer-events: none;
-      z-index: 9998; white-space: nowrap; display: none;
+      z-index: 9999; white-space: nowrap; display: none;
     }
     #hint.found { background: rgba(0,160,80,0.85); }
   </style>
@@ -47,7 +64,7 @@
     document.getElementById('start-btn').addEventListener('click', async () => {
       const hint = document.getElementById('hint');
 
-      // ① カメラ権限をユーザー操作のタイミングで取得
+      // ① カメラ権限を取得
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
         stream.getTracks().forEach(t => t.stop());
@@ -56,12 +73,29 @@
         return;
       }
 
-      // ② スタート画面を消してラベルを表示
+      // ② MindARがvideo要素をDOMに追加した瞬間にplaysinlineを付与
+      //    setIntervalより速く検知できるMutationObserverを使用
+      const observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+          for (const node of mutation.addedNodes) {
+            if (node.nodeName === 'VIDEO') {
+              node.setAttribute('playsinline', '');
+              node.setAttribute('webkit-playsinline', '');
+              node.muted = true;
+              node.play().catch(() => {});
+              observer.disconnect();
+            }
+          }
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+
+      // ③ スタート画面を消す
       document.getElementById('start-screen').style.display = 'none';
       hint.style.display = 'block';
       hint.textContent = '⏳ AR起動中…';
 
-      // ③ a-sceneをボタン押下のタイミングでDOMに追加
+      // ④ a-sceneを追加
       document.body.insertAdjacentHTML('beforeend', `
         <a-scene
           mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiLoading: no; uiError: no; uiScanning: no;"
@@ -78,24 +112,11 @@
           </a-entity>
         </a-scene>`);
 
-      // ④ a-sceneが追加されたらイベント登録とvideo修正を行う
+      // ⑤ マーカー検出イベント登録
       const waitForScene = setInterval(() => {
         const scene = document.querySelector('a-scene');
         if (!scene) return;
         clearInterval(waitForScene);
-
-        // MindARが作るvideo要素にplaysinlineを付与（iOS Safari対応）
-        const fixVideo = setInterval(() => {
-          const video = document.querySelector('video');
-          if (video) {
-            clearInterval(fixVideo);
-            video.setAttribute('playsinline', '');
-            video.setAttribute('webkit-playsinline', '');
-            video.muted = true;
-            video.play().catch(() => {});
-          }
-        }, 100);
-
         scene.addEventListener('arReady', () => {
           hint.textContent = '📷 マーカーを探しています…';
         });
