@@ -4,19 +4,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>WebAR – 2D SDキャラ</title>
-
-  <!--
-    ============================================================
-    依存ライブラリ（CDN）
-    ・A-Frame 1.5.0      … WebAR用3D/2Dシーングラフ
-    ・MindAR 1.2.5       … 画像マーカー認識（2D精度が高い）
-    ============================================================
-  -->
   <script src="https://cdn.jsdelivr.net/npm/aframe@1.5.0/dist/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
   <style>
-    /* ── 全画面カメラ映像を背景に使うための基本リセット ── */
     html, body {
       margin: 0;
       padding: 0;
@@ -26,140 +17,62 @@
       background: #000;
     }
 
-    /* ── ローディング中に表示するオーバーレイ ── */
-    #loading-overlay {
-      position: fixed;
-      inset: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      background: rgba(0, 0, 0, 0.75);
-      color: #fff;
-      font-family: sans-serif;
-      font-size: 1.1rem;
-      z-index: 9999;
-      gap: 16px;
-      transition: opacity 0.5s ease;
-    }
-    #loading-overlay.hidden {
-      opacity: 0;
-      pointer-events: none;
-    }
-    .spinner {
-      width: 48px;
-      height: 48px;
-      border: 5px solid rgba(255,255,255,0.3);
-      border-top-color: #fff;
-      border-radius: 50%;
-      animation: spin 0.9s linear infinite;
-    }
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-
-    /* ── マーカーが見つかったときのヒント表示 ── */
     #hint {
       position: fixed;
       bottom: 32px;
       left: 50%;
       transform: translateX(-50%);
-      background: rgba(0,0,0,0.55);
+      background: rgba(0,0,0,0.6);
       color: #fff;
       font-family: sans-serif;
-      font-size: 0.9rem;
-      padding: 8px 20px;
+      font-size: 1rem;
+      padding: 10px 24px;
       border-radius: 999px;
       pointer-events: none;
-      opacity: 0;
+      opacity: 1;
       transition: opacity 0.4s ease;
-      z-index: 9998;
+      z-index: 9999;
       white-space: nowrap;
     }
-    #hint.visible { opacity: 1; }
+    #hint.found {
+      background: rgba(0, 160, 80, 0.8);
+    }
   </style>
 </head>
 <body>
 
-  <!-- ── ローディング画面 ── -->
-  <div id="loading-overlay">
-    <div class="spinner"></div>
-    <p>カメラを起動中…<br>マーカー画像にかざしてください</p>
-  </div>
-
-  <!-- ── マーカー検出ヒント ── -->
-  <div id="hint" id="hint">🎉 キャラクター出現中！</div>
+  <!-- 状態表示ラベル（常時表示） -->
+  <div id="hint">📷 マーカーを探しています…</div>
 
   <!--
-    ====================================================================
-    A-Frame シーン
-    ====================================================================
-    mindar-image
-      imageTargetSrc  : コンパイル済み .mind ファイルのパス
-      autoStart       : true でページ読み込み直後にカメラ起動
-      uiLoading / uiError / uiScanning : MindAR 標準UIを非表示
-                        （代わりに独自 #loading-overlay を使用）
-    ====================================================================
+    uiLoading / uiError / uiScanning はすべて "no" にして
+    MindAR 標準UIに任せず、JavaScript で制御する
   -->
   <a-scene
     mindar-image="
       imageTargetSrc: ./targets.mind;
       autoStart: true;
-      uiLoading: #loading-overlay;
+      uiLoading: no;
       uiError: no;
       uiScanning: no;
     "
     color-space="sRGB"
-    renderer="colorManagement: true; physicallyCorrectLights: false"
+    renderer="colorManagement: true"
     vr-mode-ui="enabled: false"
     device-orientation-permission-ui="enabled: false"
   >
-
-    <!-- カメラエンティティ（必須） -->
     <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-    <!--
-      ==================================================================
-      画像マーカー（targets.mind の index=0 番目のターゲット）
-      ==================================================================
-      <a-entity mindar-image-target="targetIndex: 0">
-        の子要素として配置したものが、マーカーの上に重なって表示される。
-
-      ＜座標系のメモ＞
-        ・マーカー中心 = (0, 0, 0)
-        ・マーカー面   = XY 平面（Z が手前方向）
-        ・マーカーの縦横比に合わせて position / scale を調整する
-      ==================================================================
-    -->
     <a-entity mindar-image-target="targetIndex: 0">
 
-      <!--
-        ── 2D SDキャラ画像 ──────────────────────────────────────────
-
-        <a-image> は A-Frame のプリミティブで、
-        テクスチャ付きの平面（plane）を 1 タグで書ける。
-
-        src     : 表示したい透過PNG（フォルダに置いておく）
-        width   : マーカー幅に対する相対サイズ（1.0 ≒ マーカーと同幅）
-        height  : PNG の縦横比に合わせて調整（例: 1:1 なら同値）
-        position: マーカー中心からのオフセット（y を上げると上にずれる）
-        rotation: -90 を指定しない ＝ マーカー面（XY平面）に水平に貼り付き
-                  → カメラから真正面に見える
-        transparent: true にすることで PNG のアルファが有効になる
-
-        animation コンポーネント（A-Frame 内蔵）で2種のアニメを付与:
-          1. float  … Y 軸を ±0.05 往復（フワフワ浮遊）
-          2. wobble … Z 軸回転を ±5° 往復（ゆらゆら揺れ）
-        ──────────────────────────────────────────────────────────── -->
+      <!-- SDキャラ画像 -->
       <a-image
-        id="sd-chara"
         src="./chara.png"
         width="0.7"
         height="0.7"
         position="0 0.05 0"
         transparent="true"
         alpha-test="0.1"
-
         animation__float="
           property: position;
           from: 0 0.02 0;
@@ -169,7 +82,6 @@
           loop: true;
           easing: easeInOutSine;
         "
-
         animation__wobble="
           property: rotation;
           from: 0 0 -4;
@@ -181,11 +93,7 @@
         "
       ></a-image>
 
-      <!--
-        ── （オプション）キャラの影 ──────────────────────────────
-        楕円形の半透明黒い円でリアルな浮遊感を演出。
-        position の Y を下げてキャラの足元に置く。
-        ─────────────────────────────────────────────────────── -->
+      <!-- キャラの影 -->
       <a-ellipse
         position="0 -0.28 0"
         semi-minor-axis="0.18"
@@ -193,8 +101,7 @@
         color="#000000"
         opacity="0.25"
         rotation="-90 0 0"
-
-        animation__shadow-pulse="
+        animation__shadow="
           property: scale;
           from: 1 1 1;
           to:   0.88 0.88 0.88;
@@ -206,41 +113,21 @@
       ></a-ellipse>
 
     </a-entity>
-    <!-- / mindar-image-target -->
 
   </a-scene>
 
   <script>
-    // ================================================================
-    // UI 制御スクリプト
-    // ================================================================
+    const hint = document.getElementById('hint');
+    const scene = document.querySelector('a-scene');
 
-    const overlay = document.getElementById('loading-overlay');
-    const hint    = document.getElementById('hint');
-    const scene   = document.querySelector('a-scene');
-
-    // ── シーン起動完了 → ローディング非表示 ─────────────────────
-    scene.addEventListener('arReady', () => {
-      overlay.classList.add('hidden');
-    });
-
-    // ── マーカー検出 → ヒント表示 ────────────────────────────────
     scene.addEventListener('targetFound', () => {
-      hint.classList.add('visible');
+      hint.textContent = '🎉 キャラクター出現中！';
+      hint.classList.add('found');
     });
 
-    // ── マーカー消失 → ヒント非表示 ──────────────────────────────
     scene.addEventListener('targetLost', () => {
-      hint.classList.remove('visible');
-    });
-
-    // ── エラー時のフォールバック ───────────────────────────────────
-    scene.addEventListener('arError', (e) => {
-      overlay.innerHTML = `
-        <p style="color:#f88; text-align:center; padding:0 24px;">
-          ⚠️ カメラの起動に失敗しました。<br>
-          ブラウザのカメラ権限を確認して、ページを再読み込みしてください。
-        </p>`;
+      hint.textContent = '📷 マーカーを探しています…';
+      hint.classList.remove('found');
     });
   </script>
 
