@@ -99,6 +99,17 @@
         });
       }, 100);
     });
+    // MindARが作るvideo要素にplaysinlineを強制付与
+      const fixVideo = setInterval(() => {
+        const video = document.querySelector('video');
+        if (video) {
+          clearInterval(fixVideo);
+          video.setAttribute('playsinline', '');
+          video.setAttribute('webkit-playsinline', '');
+          video.muted = true;
+          video.play().catch(() => {});
+        }
+      }, 100);
   </script>
 
 </body>
